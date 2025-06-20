@@ -210,8 +210,10 @@ public actor SwiftVaultKeychainService: SwiftVaultService {
             logger.info("External changes detected. Added: \(addedKeys.count), Removed: \(removedKeys.count).")
             // 키체인 외부 변경 감지는 키 목록 비교에 의존하므로, 변경된 내용의 transactionID를 알 수 없습니다.
             // 따라서 transactionID는 nil로 전달하여, 수신 측에서 무조건 리로드하도록 합니다.
-            if let changedKey = addedKeys.union(removedKeys).first {
-                changeContinuation.yield((key: String(changedKey.dropFirst(self.keyPrefix.count)), transactionID: nil))
+        let allChangedKeys = addedKeys.union(removedKeys)
+        for changedPrefixedKey in allChangedKeys {
+            let originalKey = String(changedPrefixedKey.dropFirst(self.keyPrefix.count))
+            changeContinuation.yield((key: originalKey, transactionID: nil))
             }
         }
         
