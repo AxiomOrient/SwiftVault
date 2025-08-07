@@ -148,7 +148,7 @@ struct SwiftVaultUserDefaultsServiceTests {
         }
         
         // Act
-        try await Task.sleep(for: .milliseconds(100))
+        try await Task.sleep(nanoseconds: 100_000_000)
         let data = try encoder.encode(testModel)
         try await service2.saveData(data, forKey: "someKey", transactionID: UUID())
         
@@ -170,7 +170,7 @@ private func withTimeout<T: Sendable>(
             await operation()
         }
         group.addTask {
-            try? await Task.sleep(for: .seconds(seconds))
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
             return nil // Timeout marker
         }
         

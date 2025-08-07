@@ -12,8 +12,9 @@ internal final class VaultManager {
     
     /// 지정된 데이터 정의에 맞는 공유 `VaultDataStorage` 인스턴스를 반환합니다.
     func storage<S: VaultStorable>(for definition: S.Type) -> VaultDataStorage<S.Value> {
-        let key = definition.key
-        if let existingStorage = storageCache[key] as? VaultDataStorage<S.Value> {
+        // 타입별 고유성을 위해 definition의 타입 이름과 key를 조합하여 캐시 키로 사용
+        let cacheKey = "\(String(describing: definition))-\(definition.key)"
+        if let existingStorage = storageCache[cacheKey] as? VaultDataStorage<S.Value> {
             return existingStorage
         }
         
@@ -24,14 +25,14 @@ internal final class VaultManager {
         let migrator = builder.build()
         
         let newStorage = VaultDataStorage<S.Value>(
-            key: key,
+            key: definition.key, // VaultDataStorage에는 원래 key를 전달
             defaultValue: definition.defaultValue,
             service: service,
             migrator: migrator,
             encoder: definition.encoder,
             decoder: definition.decoder
         )
-        storageCache[key] = newStorage
+        storageCache[cacheKey] = newStorage // 캐시에는 조합된 키 사용
         return newStorage
     }
     

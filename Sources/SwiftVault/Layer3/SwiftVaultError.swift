@@ -1,28 +1,92 @@
 import Foundation
 
-/// SwiftVault 작업 중 발생할 수 있는 일반적인 오류를 나타내는 열거형입니다.
-/// 이 오류들은 작업의 종류(예: 읽기, 쓰기, 삭제)와 관련된 구체적인 실패 원인을
-/// 나타내기 위해 세분화되어 있습니다. 각 케이스는 추가적인 컨텍스트 정보를
-/// 제공할 수 있는 연관 값을 포함할 수 있습니다.
+/// A comprehensive error type representing all possible failures in SwiftVault operations.
+///
+/// This error enumeration provides detailed, categorized error cases for different types of
+/// storage operations across all SwiftVault services. Each error case includes contextual
+/// information to help with debugging and error handling.
+///
+/// ## Error Categories
+/// - **Generic Storage Errors**: Common errors across all storage types
+/// - **File System Errors**: Specific to file-based storage operations
+/// - **Synchronization Errors**: Related to file coordination and app groups
+/// - **Migration Errors**: Data migration and versioning failures
+/// - **UserDefaults Errors**: Specific to UserDefaults operations
+///
+/// ## Usage Example
+/// ```swift
+/// do {
+///     try await vaultService.save(data, forKey: "user_profile")
+/// } catch let error as SwiftVaultError {
+///     switch error {
+///     case .writeFailed(let key, let underlyingError):
+///         logger.error("Failed to write key '\(key)': \(underlyingError?.localizedDescription ?? "Unknown error")")
+///     case .encodingFailed(let type, let underlyingError):
+///         logger.error("Failed to encode type '\(type)': \(underlyingError?.localizedDescription ?? "Unknown error")")
+///     default:
+///         logger.error("SwiftVault error: \(error.localizedDescription)")
+///     }
+/// }
+/// ```
+///
+/// ## Error Recovery
+/// Many SwiftVault operations implement automatic error recovery:
+/// - Corrupted data is automatically removed and replaced with defaults
+/// - Encoding failures are logged but don't crash the application
+/// - File system errors trigger fallback mechanisms where possible
+///
+/// ## Thread Safety
+/// This error type is thread-safe and can be used across different queues and actors.
 public enum SwiftVaultError: Error, LocalizedError, Equatable {
     // MARK: - Generic Storage Errors
-    /// 값 인코딩에 실패했을 때 발생하는 오류입니다.
+    
+    /// Indicates that value encoding failed during a storage operation.
+    /// - Parameters:
+    ///   - type: The type that failed to encode
+    ///   - underlyingError: The original error that caused the encoding failure
     case encodingFailed(type: String, underlyingError: Error? = nil)
-    /// 값 디코딩에 실패했을 때 발생하는 오류입니다.
+    
+    /// Indicates that value decoding failed during a retrieval operation.
+    /// - Parameters:
+    ///   - key: The key for which decoding failed
+    ///   - type: The expected type that failed to decode
+    ///   - underlyingError: The original error that caused the decoding failure
     case decodingFailed(key: String, type: String, underlyingError: Error? = nil)
-    /// 데이터 읽기에 실패했을 때 발생하는 오류입니다.
+    
+    /// Indicates that a data read operation failed.
+    /// - Parameters:
+    ///   - key: The key for which the read operation failed
+    ///   - underlyingError: The original error that caused the read failure
     case readFailed(key: String, underlyingError: Error? = nil)
-    /// 데이터 쓰기에 실패했을 때 발생하는 오류입니다.
+    
+    /// Indicates that a data write operation failed.
+    /// - Parameters:
+    ///   - key: The key for which the write operation failed
+    ///   - underlyingError: The original error that caused the write failure
     case writeFailed(key: String, underlyingError: Error? = nil)
-    /// 데이터 삭제에 실패했을 때 발생하는 오류입니다.
+    
+    /// Indicates that a data deletion operation failed.
+    /// - Parameters:
+    ///   - key: The key for which the deletion failed
+    ///   - underlyingError: The original error that caused the deletion failure
     case deleteFailed(key: String, underlyingError: Error? = nil)
-    /// 모든 데이터 삭제에 실패했을 때 발생하는 오류입니다.
+    
+    /// Indicates that a clear all operation failed.
+    /// - Parameter underlyingError: The original error that caused the clear operation to fail
     case clearAllFailed(underlyingError: Error? = nil)
-    /// 서비스 초기화에 실패했을 때 발생하는 오류입니다.
+    
+    /// Indicates that service initialization failed.
+    /// - Parameter message: A descriptive message explaining the initialization failure
     case initializationFailed(String)
-    /// 지원되지 않는 연산이 시도되었을 때 발생하는 오류입니다.
+    
+    /// Indicates that an unsupported operation was attempted.
+    /// - Parameter description: A description of the unsupported operation
     case unsupportedOperation(description: String)
-    /// 백엔드 관련 작업 실패 시 발생하는 오류입니다.
+    
+    /// Indicates a backend-related operation failure.
+    /// - Parameters:
+    ///   - reason: The reason for the backend failure
+    ///   - underlyingError: The original error from the backend system
     case backendError(reason: String, underlyingError: Error? = nil)
     
     // MARK: - File System Specific Errors (from former FileManagerError)
@@ -50,6 +114,29 @@ public enum SwiftVaultError: Error, LocalizedError, Equatable {
     // MARK: - Migration Errors
     /// 데이터 마이그레이션 과정에서 모든 버전의 디코딩에 실패했을 때 발생하는 오류입니다.
     case migrationFailed(key: String, underlyingErrors: [Error])
+    
+    // MARK: - UserDefaults Specific Errors
+    
+    /// Indicates that JSON encoding failed in a UserDefaults operation.
+    /// - Parameters:
+    ///   - key: The UserDefaults key for which encoding failed
+    ///   - type: The type that failed to encode
+    ///   - underlyingError: The original encoding error
+    case userDefaultsEncodingFailed(key: String, type: String, underlyingError: Error)
+    
+    /// Indicates that JSON decoding failed in a UserDefaults operation.
+    /// - Parameters:
+    ///   - key: The UserDefaults key for which decoding failed
+    ///   - type: The expected type that failed to decode
+    ///   - underlyingError: The original decoding error
+    case userDefaultsDecodingFailed(key: String, type: String, underlyingError: Error)
+    
+    /// Indicates that type casting failed in a UserDefaults operation.
+    /// - Parameters:
+    ///   - key: The UserDefaults key for which type casting failed
+    ///   - expectedType: The expected type for the cast
+    ///   - actualType: The actual type that was found
+    case userDefaultsTypeCastingFailed(key: String, expectedType: String, actualType: String)
     
     // MARK: - Equatable Conformance
     
@@ -99,6 +186,14 @@ public enum SwiftVaultError: Error, LocalizedError, Equatable {
             return id1 == id2 && _areOptionalErrorsEqualByPresence(err1, err2)
         case let (.fileCoordinationFailed(desc1, err1), .fileCoordinationFailed(desc2, err2)):
             return desc1 == desc2 && _areOptionalErrorsEqualByPresence(err1, err2)
+        case let (.migrationFailed(key1, _), .migrationFailed(key2, _)):
+            return key1 == key2
+        case let (.userDefaultsEncodingFailed(key1, type1, _), .userDefaultsEncodingFailed(key2, type2, _)):
+            return key1 == key2 && type1 == type2
+        case let (.userDefaultsDecodingFailed(key1, type1, _), .userDefaultsDecodingFailed(key2, type2, _)):
+            return key1 == key2 && type1 == type2
+        case let (.userDefaultsTypeCastingFailed(key1, expected1, actual1), .userDefaultsTypeCastingFailed(key2, expected2, actual2)):
+            return key1 == key2 && expected1 == expected2 && actual1 == actual2
         default:
             return false
         }
@@ -127,6 +222,9 @@ extension SwiftVaultError {
         case .appGroupContainerUnavailable(let appGroupId, _): return "SwiftVaultError: App Group container unavailable for ID \(appGroupId)."
         case .fileCoordinationFailed(let description, _): return "SwiftVaultError: File coordination failed - \(description)."
         case .migrationFailed(let key, _): return "SwiftVaultError: Migration failed for key '\(key)'."
+        case .userDefaultsEncodingFailed(let key, let type, _): return "SwiftVaultError: UserDefaults encoding failed for key '\(key)', type \(type)."
+        case .userDefaultsDecodingFailed(let key, let type, _): return "SwiftVaultError: UserDefaults decoding failed for key '\(key)', type \(type)."
+        case .userDefaultsTypeCastingFailed(let key, let expectedType, let actualType): return "SwiftVaultError: UserDefaults type casting failed for key '\(key)'. Expected: \(expectedType), Actual: \(actualType)."
         }
     }
 }

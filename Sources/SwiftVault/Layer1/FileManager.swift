@@ -138,8 +138,7 @@ public extension FileManager {
                 throw SwiftVaultError.unsupportedOperation(description: errorDescription)
             }
             
-            // ⭐️ [오류 수정] fileExists(at:) -> fileExists(atPath:)로 수정하고, 파라미터로 URL의 path를 전달합니다.
-            guard FileManager.default.fileExists(atPath: targetURL.path) else {
+            guard FileManager.default.fileExists(at: targetURL) else {
                 let svError = SwiftVaultError.fileDoesNotExist(path: targetURL.path)
                 Self.logger.warning("Attempted to read non-existent file at \(targetURL.path, privacy: .public): \(svError.localizedDescription, privacy: .public)")
                 throw svError

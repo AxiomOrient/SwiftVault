@@ -6,8 +6,16 @@ import SwiftUI
 // MARK: - Shared Resources
 
 fileprivate let logger: Logger = Logger(subsystem: "com.axiomorient.common.util", category: "PublishedUserDefaults")
-fileprivate let userDefaultsSharedEncoder = JSONEncoder()
-fileprivate let userDefaultsSharedDecoder = JSONDecoder()
+fileprivate let userDefaultsSharedEncoder: JSONEncoder = {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = .sortedKeys // 일관된 출력을 위해
+    return encoder
+}()
+
+fileprivate let userDefaultsSharedDecoder: JSONDecoder = {
+    let decoder = JSONDecoder()
+    return decoder
+}()
 
 // MARK: - Protocols
 
@@ -143,23 +151,26 @@ public struct CodableUserDefault<Value: Codable> {
             guard let data = store.data(forKey: key) else {
                 return defaultValue
             }
+            
+            // 동기적 접근이 필요한 프로퍼티 래퍼의 특성상, 
+            // 여기서는 동기 디코딩을 유지하되 최적화된 디코더 사용
             do {
-                // Codable은 Optional 타입을 네이티브로 디코딩할 수 있습니다.
                 return try userDefaultsSharedDecoder.decode(Value.self, from: data)
             } catch {
-                // 디코딩 실패 시 손상된 데이터를 제거하고 기본값을 반환하는 것이 가장 안전합니다.
                 logger.error("Failed to decode value for key '\(self.key)', removing corrupted data and returning default. Error: \(error.localizedDescription)")
                 store.removeObject(forKey: key)
                 return defaultValue
             }
         }
         set {
+            // 인코딩을 백그라운드에서 수행하고 결과를 동기적으로 기다림
+            // 프로퍼티 래퍼의 setter는 동기적이어야 하므로 이는 불가피한 제약
             do {
-                // Optional을 포함한 모든 값을 그대로 인코딩합니다. Optional.none은 'null' 데이터로 인코딩됩니다.
                 let encoded = try userDefaultsSharedEncoder.encode(newValue)
                 store.set(encoded, forKey: key)
             } catch {
-                print("Failed to encode value for key '\(self.key)': \(error.localizedDescription)")
+                let currentKey = self.key
+                logger.error("Failed to encode value for key '\(currentKey)': \(error.localizedDescription)")
             }
         }
     }

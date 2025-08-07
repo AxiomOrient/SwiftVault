@@ -110,6 +110,7 @@ extension KeychainError: Equatable {
 public extension KeychainError {
     static let errSecInvalidData: OSStatus = -25321
     static let errSecDecode: OSStatus = -25322
+    static let errSecEncodingFailed: OSStatus = -25323 // 예시 코드
 }
 /// Keychain item accessibility options
 public enum KeychainAccessibility: Sendable {
