@@ -153,11 +153,14 @@ internal final class VaultDataStorage<Value: AnyCodable & Equatable>: Observable
     private func saveValueWithDebounce() {
         debounceTask?.cancel()
         
-        debounceTask = Task {
+        debounceTask = Task { @MainActor in
             do {
-                try await Task.sleep(for: .milliseconds(300))
-                await performSave()
+                try await Task.sleep(nanoseconds: 300_000_000) // 300ms
+                if !Task.isCancelled {
+                    await performSave()
+                }
             } catch is CancellationError {
+                // 정상적인 취소, 로깅하지 않음
             } catch {
                 logger.error("Failed to save value after debounce for key '\(self.key, privacy: .public)': \(error.localizedDescription)")
             }
@@ -168,7 +171,11 @@ internal final class VaultDataStorage<Value: AnyCodable & Equatable>: Observable
         do {
             let transactionID = UUID()
             let currentValue = await readCurrentValue()
-            let dataToSave = try encoder.encode(currentValue)
+            
+            // 인코딩을 백그라운드에서 수행
+            let dataToSave = try await Task.detached {
+                try self.encoder.encode(currentValue)
+            }.value
             
             try await service.saveData(dataToSave, forKey: key, transactionID: transactionID)
             
@@ -203,13 +210,22 @@ internal final class VaultDataStorage<Value: AnyCodable & Equatable>: Observable
             return
         }
         
-        loadingTask = Task {
+        loadingTask = Task { @MainActor in
             defer { loadingTask = nil }
             
-            let dataOnDisk = try? await service.loadData(forKey: key)
-            let dataInMemory = try? encoder.encode(self.value)
+            // 동시성 안전성을 위해 현재 값을 먼저 캡처
+            let currentValue = self.value
             
-            if dataOnDisk != dataInMemory {
+            let comparison = await Task.detached { [weak self] in
+                guard let self else { return (false, nil as Data?) }
+                
+                let dataOnDisk = try? await self.service.loadData(forKey: self.key)
+                let dataInMemory = try? self.encoder.encode(currentValue)
+                
+                return (dataOnDisk != dataInMemory, dataOnDisk)
+            }.value
+            
+            if comparison.0 {
                 logger.info("Data for key '\(self.key)' is out of sync. Reloading value.")
                 if let reloadedValue = await self.loadAndMigrateIfNeeded() {
                     if self.value != reloadedValue {

@@ -18,8 +18,16 @@ public actor SwiftVaultFileSystemService: SwiftVaultService {
     private let serviceName: String = "SwiftVaultFileSystemService"
 
     /// StoredObject 래퍼를 인코딩/디코딩하기 위한 내부 전용 직렬화 도구입니다.
-    private let encoder = JSONEncoder()
-    private let decoder = JSONDecoder()
+    private let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys // 일관된 출력을 위해
+        return encoder
+    }()
+    
+    private let decoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        return decoder
+    }()
 
     private let fileCoordinator: NSFileCoordinator
     private let (changeStream, changeContinuation): (AsyncStream<(key: String?, transactionID: UUID?)>, AsyncStream<(key: String?, transactionID: UUID?)>.Continuation)
@@ -161,13 +169,11 @@ public actor SwiftVaultFileSystemService: SwiftVaultService {
         let targetURL = try path.url()
         logger.debug("Attempting to save raw data to file '\(targetURL.path)' with transaction \(transactionID.uuidString.prefix(8))")
 
-        let objectToStore = StoredObject(value: data, transactionID: transactionID)
-        let dataToSave: Data
-        do {
-            dataToSave = try encoder.encode(objectToStore)
-        } catch {
-            throw SwiftVaultError.encodingFailed(type: "StoredObject", underlyingError: error)
-        }
+        // 인코딩을 백그라운드에서 수행하여 메인 스레드 블로킹 방지
+        let dataToSave = try await Task.detached { [encoder] in
+            let objectToStore = StoredObject(value: data, transactionID: transactionID)
+            return try encoder.encode(objectToStore)
+        }.value
 
         var fileCoordinationError: NSError?
         var writeError: Error?
@@ -219,13 +225,19 @@ public actor SwiftVaultFileSystemService: SwiftVaultService {
 
         guard let encodedObject = loadedRawData else { return nil }
 
-        do {
-            let storedObject = try decoder.decode(StoredObject.self, from: encodedObject)
-            return storedObject.value
-        } catch {
-            logger.warning("Could not decode StoredObject for key '\(key)'. Data might be in an old format or corrupted. Returning nil. Error: \(error.localizedDescription)")
-            return nil
-        }
+        // 디코딩을 백그라운드에서 수행
+        return await Task.detached { [decoder] in
+            do {
+                let storedObject = try decoder.decode(StoredObject.self, from: encodedObject)
+                return storedObject.value
+            } catch {
+                // 로깅은 메인 액터에서 수행
+                await MainActor.run {
+                    self.logger.warning("Could not decode StoredObject for key '\(key)'. Data might be in an old format or corrupted. Returning nil. Error: \(error.localizedDescription)")
+                }
+                return nil
+            }
+        }.value
     }
 
     // MARK: - Private Helper Methods
@@ -278,18 +290,21 @@ public actor SwiftVaultFileSystemService: SwiftVaultService {
             url = toURL
         }
 
-        let transactionID: UUID?
-        do {
-            let fileData = try Data(contentsOf: url)
-            let storedObject = try decoder.decode(StoredObject.self, from: fileData)
-            transactionID = storedObject.transactionID
-        } catch {
-            // 파일을 읽을 수 없거나 디코딩에 실패하면 ID를 알 수 없습니다.
-            // 외부 변경 감지 시 파일 상태가 일시적으로 불안정할 수 있으므로 오류를 로깅하고 transactionID는 nil로 처리합니다.
-            logger.warning("Could not read or decode StoredObject from file '\(url.path, privacy: .public)' during external change processing. Transaction ID will be nil. Error: \(error.localizedDescription)")
-            transactionID = nil
-        }
+        // 파일 읽기와 디코딩을 백그라운드에서 수행
+        Task.detached { [decoder, logger, changeContinuation, key, url] in
+            let transactionID: UUID?
+            do {
+                let fileData = try Data(contentsOf: url)
+                let storedObject = try decoder.decode(StoredObject.self, from: fileData)
+                transactionID = storedObject.transactionID
+            } catch {
+                // 파일을 읽을 수 없거나 디코딩에 실패하면 ID를 알 수 없습니다.
+                // 외부 변경 감지 시 파일 상태가 일시적으로 불안정할 수 있으므로 오류를 로깅하고 transactionID는 nil로 처리합니다.
+                logger.warning("Could not read or decode StoredObject from file '\(url.path, privacy: .public)' during external change processing. Transaction ID will be nil. Error: \(error.localizedDescription)")
+                transactionID = nil
+            }
 
-        changeContinuation.yield((key: key, transactionID: transactionID))
+            changeContinuation.yield((key: key, transactionID: transactionID))
+        }
     }
 }

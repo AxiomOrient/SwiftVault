@@ -6,7 +6,7 @@ import PackageDescription
 let package = Package(
     name: "SwiftVault",
     platforms: [
-        .iOS(.v16),
+        .iOS(.v15),
         .watchOS(.v8),
         .macOS(.v12),
     ],

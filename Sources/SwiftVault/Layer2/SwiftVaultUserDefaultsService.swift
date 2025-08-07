@@ -79,8 +79,16 @@ public actor SwiftVaultUserDefaultsService: SwiftVaultService {
     private let logger: Logger
     private let suiteName: String?
     
-    private let encoder = JSONEncoder()
-    private let decoder = JSONDecoder()
+    private let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        return encoder
+    }()
+    
+    private let decoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        return decoder
+    }()
     
     private let (changeStream, changeContinuation): (AsyncStream<(key: String?, transactionID: UUID?)>, AsyncStream<(key: String?, transactionID: UUID?)>.Continuation)
     
@@ -136,13 +144,13 @@ public actor SwiftVaultUserDefaultsService: SwiftVaultService {
     public func saveData(_ data: Data, forKey key: String, transactionID: UUID) async throws {
         logger.debug("Attempting to save raw data for key '\(key)' with transaction \(transactionID.uuidString.prefix(8))")
         
-        let objectToStore = StoredObject(value: data, transactionID: transactionID)
-        do {
-            let encodedObject = try encoder.encode(objectToStore)
-            await worker.set(encodedObject, forKey: key)
-        } catch {
-            throw SwiftVaultError.encodingFailed(type: "StoredObject", underlyingError: error)
-        }
+        // 인코딩을 백그라운드에서 수행
+        let encodedObject = try await Task.detached { [encoder] in
+            let objectToStore = StoredObject(value: data, transactionID: transactionID)
+            return try encoder.encode(objectToStore)
+        }.value
+        
+        await worker.set(encodedObject, forKey: key)
     }
     
     public func loadData(forKey key: String) async throws -> Data? {
@@ -152,12 +160,15 @@ public actor SwiftVaultUserDefaultsService: SwiftVaultService {
             return nil
         }
         
-        do {
-            let storedObject = try decoder.decode(StoredObject.self, from: encodedObject)
-            return storedObject.value
-        } catch {
-            logger.warning("Could not decode StoredObject for key '\(key)'. Data might be in an old format or corrupted. Returning nil. Error: \(error.localizedDescription)")
-            return nil
-        }
+        // 디코딩을 백그라운드에서 수행
+        return await Task.detached { [decoder, logger] in
+            do {
+                let storedObject = try decoder.decode(StoredObject.self, from: encodedObject)
+                return storedObject.value
+            } catch {
+                logger.warning("Could not decode StoredObject for key '\(key)'. Data might be in an old format or corrupted. Returning nil. Error: \(error.localizedDescription)")
+                return nil
+            }
+        }.value
     }
 }

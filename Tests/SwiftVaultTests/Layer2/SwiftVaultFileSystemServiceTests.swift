@@ -131,7 +131,7 @@ struct SwiftVaultFileSystemServiceTests {
         }
         
         // Act
-        try await Task.sleep(for: .milliseconds(200))
+        try await Task.sleep(nanoseconds: 200_000_000)
         FileManager.default.createFile(atPath: externalFileURL.path, contents: "external data".data(using: .utf8))
         
         // Assert
@@ -163,7 +163,7 @@ struct SwiftVaultFileSystemServiceTests {
         }
 
         // Act
-        try await Task.sleep(for: .milliseconds(200))
+        try await Task.sleep(nanoseconds: 200_000_000)
         try FileManager.default.removeItem(at: externalFileURL)
 
         // Assert
@@ -203,7 +203,7 @@ struct SwiftVaultFileSystemServiceTests {
         }
         
         // Act
-        try await Task.sleep(for: .milliseconds(200))
+        try await Task.sleep(nanoseconds: 200_000_000)
         try FileManager.default.moveItem(at: oldURL, to: newURL)
         
         // Assert
@@ -226,7 +226,7 @@ private func withTimeout<T: Sendable>(
             await operation()
         }
         group.addTask {
-            try? await Task.sleep(for: .seconds(seconds))
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
             return nil // Timeout marker
         }
         

@@ -75,7 +75,7 @@ struct VaultDataStorageTests {
 
         // Act
         let storage = VaultDataStorage(key: testKey, defaultValue: TestModel(value: "default"), service: service, migrator: migrator, encoder: encoder, decoder: decoder)
-        try await Task.sleep(for: .milliseconds(100)) // 초기 로드 대기
+        try await Task.sleep(nanoseconds: 100_000_000) // 초기 로드 대기
 
         // Assert
         #expect(storage.value == savedValue, "Value should be the saved value.")
@@ -88,7 +88,7 @@ struct VaultDataStorageTests {
         let service = MockStorageService()
         let migrator = DataMigrator.Builder(targetType: TestModel.self).build()
         let storage = VaultDataStorage(key: testKey, defaultValue: TestModel(value: "initial"), service: service, migrator: migrator, encoder: encoder, decoder: decoder)
-        try await Task.sleep(for: .milliseconds(100))
+        try await Task.sleep(nanoseconds: 100_000_000)
         
         // Act
         storage.value = TestModel(value: "updated")
@@ -98,7 +98,7 @@ struct VaultDataStorageTests {
         #expect(saveCount == 0, "Save should not be called immediately.")
         
         // 300ms 이상 대기
-        try await Task.sleep(for: .milliseconds(400))
+        try await Task.sleep(nanoseconds: 400_000_000)
         
         saveCount = await service.saveCallCount
         #expect(saveCount == 1, "Save should be called once after the debounce period.")
@@ -116,20 +116,20 @@ struct VaultDataStorageTests {
         let service = MockStorageService()
         let migrator = DataMigrator.Builder(targetType: TestModel.self).build()
         let storage = VaultDataStorage(key: testKey, defaultValue: TestModel(value: "initial"), service: service, migrator: migrator, encoder: encoder, decoder: decoder)
-        try await Task.sleep(for: .milliseconds(100))
+        try await Task.sleep(nanoseconds: 100_000_000)
         
         // Act
         storage.value = TestModel(value: "change 1")
-        try await Task.sleep(for: .milliseconds(50))
+        try await Task.sleep(nanoseconds: 50_000_000)
         storage.value = TestModel(value: "change 2")
-        try await Task.sleep(for: .milliseconds(50))
+        try await Task.sleep(nanoseconds: 50_000_000)
         storage.value = TestModel(value: "final change")
 
         // Assert: 아직 저장되지 않음
         var saveCount = await service.saveCallCount
         #expect(saveCount == 0, "Save should not have been called yet.")
 
-        try await Task.sleep(for: .milliseconds(400)) // 마지막 변경 후 디바운스 시간까지 대기
+        try await Task.sleep(nanoseconds: 400_000_000) // 마지막 변경 후 디바운스 시간까지 대기
 
         saveCount = await service.saveCallCount
         #expect(saveCount == 1, "Save should be called only once.")
@@ -147,7 +147,7 @@ struct VaultDataStorageTests {
         let service = MockStorageService()
         let migrator = DataMigrator.Builder(targetType: TestModel.self).build()
         let storage = VaultDataStorage(key: testKey, defaultValue: TestModel(value: "initial"), service: service, migrator: migrator, encoder: encoder, decoder: decoder)
-        try await Task.sleep(for: .milliseconds(100))
+        try await Task.sleep(nanoseconds: 100_000_000)
         
         // Act
         // 외부에서 직접 데이터를 변경하는 상황 시뮬레이션
@@ -159,7 +159,7 @@ struct VaultDataStorageTests {
         await service.triggerExternalChange(forKey: testKey)
         
         // 리로드 대기
-        try await Task.sleep(for: .milliseconds(100))
+        try await Task.sleep(nanoseconds: 100_000_000)
         
         // Assert
         #expect(storage.value == externalValue, "Value should be updated to the externally changed value.")
@@ -184,7 +184,7 @@ struct VaultDataStorageTests {
             
         // Act
         let storage = VaultDataStorage(key: "migratedKey", defaultValue: V2(fullName: ""), service: service, migrator: migrator, encoder: JSONEncoder(), decoder: JSONDecoder())
-        try await Task.sleep(for: .milliseconds(100)) // 초기 로드 및 마이그레이션 대기
+        try await Task.sleep(nanoseconds: 100_000_000) // 초기 로드 및 마이그레이션 대기
 
         // Assert
         #expect(storage.value.fullName == "Migrated: Old Data", "Value should be migrated from V1 to V2.")

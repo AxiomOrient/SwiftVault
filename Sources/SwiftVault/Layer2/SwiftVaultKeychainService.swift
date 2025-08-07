@@ -47,8 +47,16 @@ public actor SwiftVaultKeychainService: SwiftVaultService {
     private let serviceName = "SwiftVaultKeychainService"
     
     /// StoredObject 래퍼를 인코딩/디코딩하기 위한 내부 전용 직렬화 도구입니다.
-    private let encoder = JSONEncoder()
-    private let decoder = JSONDecoder()
+    private let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        return encoder
+    }()
+    
+    private let decoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        return decoder
+    }()
     
     private let (changeStream, changeContinuation): (AsyncStream<(key: String?, transactionID: UUID?)>, AsyncStream<(key: String?, transactionID: UUID?)>.Continuation)
     private var lastKnownKeys: Set<String> = []
@@ -148,13 +156,11 @@ public actor SwiftVaultKeychainService: SwiftVaultService {
         let prefixedKey = self.keyPrefix + key
         logger.debug("Attempting to save raw data to keychain for key '\(prefixedKey)' with transaction \(transactionID.uuidString.prefix(8))")
 
-        let objectToStore = StoredObject(value: data, transactionID: transactionID)
-        let dataToSave: Data
-        do {
-            dataToSave = try encoder.encode(objectToStore)
-        } catch {
-            throw SwiftVaultError.encodingFailed(type: "StoredObject", underlyingError: error)
-        }
+        // 인코딩을 백그라운드에서 수행
+        let dataToSave = try await Task.detached { [encoder] in
+            let objectToStore = StoredObject(value: data, transactionID: transactionID)
+            return try encoder.encode(objectToStore)
+        }.value
         
         let result = await keychainService.store(dataToSave, forKey: prefixedKey)
         
@@ -183,14 +189,16 @@ public actor SwiftVaultKeychainService: SwiftVaultService {
             return nil
         }
         
-        // 이제 `encodedObject`는 non-optional `Data` 타입입니다.
-        do {
-            let storedObject = try decoder.decode(StoredObject.self, from: encodedObject)
-            return storedObject.value
-        } catch {
-            logger.warning("Could not decode StoredObject for key '\(prefixedKey)'. Data might be in an old format or corrupted. Returning nil. Error: \(error.localizedDescription)")
-            return nil
-        }
+        // 디코딩을 백그라운드에서 수행
+        return await Task.detached { [decoder, logger, prefixedKey] in
+            do {
+                let storedObject = try decoder.decode(StoredObject.self, from: encodedObject)
+                return storedObject.value
+            } catch {
+                logger.warning("Could not decode StoredObject for key '\(prefixedKey)'. Data might be in an old format or corrupted. Returning nil. Error: \(error.localizedDescription)")
+                return nil
+            }
+        }.value
     }
 
     // MARK: - Private Helper Methods

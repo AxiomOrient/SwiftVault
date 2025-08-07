@@ -63,7 +63,7 @@ struct FilePresenterObserverTests {
         observer.startObserving()
         defer { observer.stopObserving() }
         
-        try await Task.sleep(for: .milliseconds(200))
+        try await Task.sleep(nanoseconds: 200_000_000) // 200ms
         FileManager.default.createFile(atPath: newFileURL.path, contents: "hello".data(using: .utf8))
         
         // Assert
@@ -112,7 +112,7 @@ struct FilePresenterObserverTests {
             
             // 타임아웃 Task
             group.addTask {
-                try? await Task.sleep(for: .seconds(timeout))
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000)) // Convert seconds to nanoseconds
                 return false // 타임아웃 발생 시 false 반환
             }
             
